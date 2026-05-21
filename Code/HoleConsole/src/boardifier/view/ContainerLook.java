@@ -1,3 +1,6 @@
+
+
+
 package boardifier.view;
 
 import boardifier.control.Logger;
