@@ -34,6 +34,15 @@ import java.io.InputStreamReader;
  */
 public class MerelleController extends Controller {
 
+    /**
+     * Exception levée quand le joueur tape "return".
+     * Interrompt la partie en cours sans quitter le programme,
+     * pour retomber sur le menu "Nouvelle partie ?".
+     */
+    public static class ReturnToMenuException extends RuntimeException {
+        public ReturnToMenuException() { super("Retour au menu demande."); }
+    }
+
     private BufferedReader consoleIn;
 
     public MerelleController(Model model, View view) {
@@ -49,12 +58,18 @@ public class MerelleController extends Controller {
         consoleIn = new BufferedReader(new InputStreamReader(System.in));
         // Premier affichage
         update();
-        while (!model.isEndStage()) {
-            playTurn();
-            endOfTurn();
-            update();
+        try {
+            while (!model.isEndStage()) {
+                playTurn();
+                endOfTurn();
+                update();
+            }
+            endGame();
+        } catch (ReturnToMenuException e) {
+            // Le joueur a tape "return" : on abandonne la partie sans afficher de fin
+            System.out.println();
+            System.out.println("Partie abandonnee.");
         }
-        endGame();
     }
 
     /**
@@ -69,9 +84,15 @@ public class MerelleController extends Controller {
             try {
                 if (consoleIn.ready()) {
                     String line = consoleIn.readLine();
-                    if (line != null && line.trim().toLowerCase().contains("stop")) {
-                        System.out.println("Arrêt demandé. Fin du jeu.");
-                        System.exit(0);
+                    if (line != null) {
+                        String cmd = line.trim().toLowerCase();
+                        if (cmd.contains("stop")) {
+                            System.out.println("Arret demande. Fin du jeu.");
+                            System.exit(0);
+                        }
+                        if (cmd.contains("return")) {
+                            throw new ReturnToMenuException();
+                        }
                     }
                 }
             } catch (IOException ignored) {}
@@ -98,8 +119,12 @@ public class MerelleController extends Controller {
                     line = line.trim();
                     // Arrêt immédiat si "stop" détecté
                     if (line.toLowerCase().contains("stop")) {
-                        System.out.println("Arrêt demandé. Fin du jeu.");
+                        System.out.println("Arret demande. Fin du jeu.");
                         System.exit(0);
+                    }
+                    // Retour au menu si "return" détecté
+                    if (line.toLowerCase().contains("return")) {
+                        throw new ReturnToMenuException();
                     }
                     ok = analyseAndPlay(line);
                     if (!ok) {
@@ -465,9 +490,7 @@ public class MerelleController extends Controller {
      * @param stageModel modèle du stage courant
      * @return true si le déplacement reformerait le même moulin
      */
-    private boolean wouldReformSameMill(MerelleBoard board, int src, int dest,
-                                        int color, int playerId,
-                                        MerelleStageModel stageModel) {
+    private boolean wouldReformSameMill(MerelleBoard board, int src, int dest, int color, int playerId, MerelleStageModel stageModel) {
         // L'historique des moulins est permanent : tout moulin déjà formé
         // par ce joueur (à n'importe quel moment de la partie) est interdit à la reformation.
         // On cherche si le déplacement src→dest formerait un moulin déjà dans l'historique.
