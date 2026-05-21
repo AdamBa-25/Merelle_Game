@@ -141,7 +141,7 @@ public class MerelleDecider extends Decider {
             // Ex : si la dernière fois il a joué "9->10", jouer "10->9" = ping-pong.
             String moveStr = mv[0] + "->" + mv[1];
             if (isPingPong(lastOwnMove, moveStr)) {
-                score -= 80;
+                score -= 500;
             }
 
             if (score > bestScore) {
@@ -448,120 +448,109 @@ public class MerelleDecider extends Decider {
      */
     private int evaluateSnap(int[] snap, int colorAI, int colorOpp, int phase) {
 
-        // ── 1. Comptage des pions ───────────────────────────────────────────
-        int pawnsAI = 0, pawnsOpp = 0;
+        int pawnsAI = 0;
+        int pawnsOpp = 0;
+
+        int millsAI = 0;
+        int millsOpp = 0;
+
+        int threatsAI = 0;
+        int threatsOpp = 0;
+
+        int mobilityAI = allMovesSnap(snap, colorAI).size();
+        int mobilityOpp = allMovesSnap(snap, colorOpp).size();
+
+        // Comptage
         for (int v : snap) {
-            if (v == colorAI)  pawnsAI++;
-            if (v == colorOpp) pawnsOpp++;
+            if (v == colorAI) pawnsAI++;
+            else if (v == colorOpp) pawnsOpp++;
         }
 
-        // ── 2. États terminaux ──────────────────────────────────────────────
+        // Fin de partie
         if (phase == MerelleStageModel.PHASE_DEPLACEMENT) {
-            if (pawnsOpp < 3) return +10000;
-            if (pawnsAI  < 3) return -10000;
+            if (pawnsOpp < 3) return 100000;
+            if (pawnsAI < 3) return -100000;
+
+            if (allMovesSnap(snap, colorOpp).isEmpty()) return 100000;
+            if (allMovesSnap(snap, colorAI).isEmpty()) return -100000;
         }
 
-        // ── 3. Mobilité brute ───────────────────────────────────────────────
-        List<int[]> movesAI  = allMovesSnap(snap, colorAI);
-        List<int[]> movesOpp = allMovesSnap(snap, colorOpp);
-        if (phase == MerelleStageModel.PHASE_DEPLACEMENT) {
-            if (movesAI.isEmpty())  return -10000;
-            if (movesOpp.isEmpty()) return +10000;
-        }
-        int mobilityAI  = movesAI.size();
-        int mobilityOpp = movesOpp.size();
+        // Analyse des moulins
+        for (int[] mill : MerelleBoard.MILLS) {
 
-        // ── 4. Analyse des moulins ───────────────────────────────────────────
-        int millsAI = 0, millsOpp = 0;
-        int nearAI  = 0, nearOpp  = 0;
-        int openOneAI = 0, openOneOpp = 0;
-        int blockedNearAI = 0, blockedNearOpp = 0;
-        int inMillAI = 0, inMillOpp = 0;
+            int ai = 0;
+            int opp = 0;
+            int free = 0;
+
+            for (int pos : mill) {
+                if (snap[pos] == colorAI) ai++;
+                else if (snap[pos] == colorOpp) opp++;
+                else free++;
+            }
+
+            // Moulin complet
+            if (ai == 3) millsAI++;
+            if (opp == 3) millsOpp++;
+
+            // Menace directe
+            if (ai == 2 && free == 1) threatsAI++;
+            if (opp == 2 && free == 1) threatsOpp++;
+        }
+
+        boolean deadPosition =
+                millsAI == 0 &&
+                        millsOpp == 0 &&
+                        threatsAI == 0 &&
+                        threatsOpp == 0 &&
+                        pawnsAI == pawnsOpp;
+
+        int deadPenalty = deadPosition ? -800 : 0;
+
+        int riskyMillsAI = 0;
+        int riskyMillsOpp = 0;
 
         for (int[] mill : MerelleBoard.MILLS) {
-            int cntAI = 0, cntOpp = 0, free = 0;
-            for (int pos : mill) {
-                if      (snap[pos] == colorAI)  cntAI++;
-                else if (snap[pos] == colorOpp) cntOpp++;
-                else                            free++;
+
+            int ai = 0, opp = 0, empty = 0;
+
+            for (int p : mill) {
+                if (snap[p] == colorAI) ai++;
+                else if (snap[p] == colorOpp) opp++;
+                else empty++;
             }
-            if (cntAI  == 3) { millsAI++;  inMillAI  += 3; }
-            if (cntOpp == 3) { millsOpp++; inMillOpp += 3; }
-            if (cntAI  == 2 && free == 1)  nearAI++;
-            if (cntOpp == 2 && free == 1)  nearOpp++;
-            if (cntAI  == 2 && cntOpp == 1) blockedNearAI++;
-            if (cntOpp == 2 && cntAI  == 1) blockedNearOpp++;
-            if (cntAI  == 1 && free == 2)  openOneAI++;
-            if (cntOpp == 1 && free == 2)  openOneOpp++;
-        }
 
-        // ── 5. Analyse pion par pion ─────────────────────────────────────────
-        int stuckAI = 0, stuckOpp = 0;
-        int freedomAI = 0, freedomOpp = 0;
-        int connectAI = 0, connectOpp = 0;
+            if (ai == 3) {
+                // check si ça ouvre une capture immédiate facile
+                riskyMillsAI++;
+            }
 
-        int[] millMembership = new int[24];
-        for (int[] mill : MerelleBoard.MILLS)
-            for (int pos : mill) millMembership[pos]++;
-
-        for (int pos = 0; pos < 24; pos++) {
-            if (snap[pos] == colorAI) {
-                int freeDeg = 0;
-                for (int adj : MerelleBoard.ADJACENCY[pos])
-                    if (snap[adj] == -1) freeDeg++;
-                if (freeDeg == 0) stuckAI++;
-                freedomAI += freeDeg;
-                connectAI += millMembership[pos];
-            } else if (snap[pos] == colorOpp) {
-                int freeDeg = 0;
-                for (int adj : MerelleBoard.ADJACENCY[pos])
-                    if (snap[adj] == -1) freeDeg++;
-                if (freeDeg == 0) stuckOpp++;
-                freedomOpp += freeDeg;
-                connectOpp += millMembership[pos];
+            if (opp == 3) {
+                riskyMillsOpp++;
             }
         }
 
-        int exposedAI  = pawnsAI  - Math.min(inMillAI,  pawnsAI);
-        int exposedOpp = pawnsOpp - Math.min(inMillOpp, pawnsOpp);
+        int score = 0;
 
-        // ── 6. Score selon la phase ──────────────────────────────────────────
-        if (phase == MerelleStageModel.PHASE_PLACEMENT) {
-            // PHASE 1 : moulin et blocage avant tout
-            //
-            // nearOpp compte les menaces adverses à UNE case libre.
-            // On les bloque en posant dessus → c'est le cas "blockedNearOpp"
-            // (2 pions adverses + 1 pion AI dans le même trio = blocage confirmé).
-            // On les anticipe en récompensant fortement nearAI (on construit nos propres
-            // menaces, forçant l'adversaire à réagir) et en pénalisant nearOpp brut.
-            return
-                    (millsAI  - millsOpp)            * 600   // moulin = capture garantie
-                            + (blockedNearOpp - blockedNearAI)  * 540   // blocage effectif d'une menace adverse
-                            + (nearAI   - nearOpp)              * 400   // menace directe (2 alignés + 1 libre)
-                            + (pawnsAI  - pawnsOpp)             * 300   // pions posés sur le plateau
-                            + (connectAI - connectOpp)          * 80    // positions stratégiques (cases ×moulins)
-                            + (openOneAI - openOneOpp)          * 50    // cases ouvertes : développement futur
-                            + (mobilityAI - mobilityOpp)        * 10    // secondaire en phase 1
-                            + (exposedOpp - exposedAI)          * 10;   // idem
-        } else {
-            // PHASE 2 : matériel d'abord, puis pression, puis mobilité
-            //
-            // nearOpp monte à 230 (vs 120 avant) : en phase 2, chaque menace adverse
-            // non bloquée mène directement à une perte de pion, plus punissable.
-            // La mobilité passe à 100 : être bloqué est une condition de fin, il faut
-            // absolument conserver des cases libres adjacentes.
-            return
-                    (pawnsAI  - pawnsOpp)              * 500  // perte de pion = catastrophe
-                            + (millsAI  - millsOpp)              * 300  // moulin actif = capture imminente
-                            + (nearAI   - nearOpp)               * 230  // menace directe (renforcée vs phase 1)
-                            + (blockedNearOpp - blockedNearAI)   * 130  // blocage de quasi-moulin adverse
-                            + (mobilityAI - mobilityOpp)         * 100  // éviter l'immobilisation (fin de partie)
-                            + (stuckOpp - stuckAI)               * 50   // pions adverses sans sortie
-                            + (exposedOpp - exposedAI)           * 40   // pions vulnérables hors moulin
-                            + (freedomAI - freedomOpp)           * 15   // liberté de mouvement
-                            + (openOneAI - openOneOpp)           * 10   // potentiel de développement
-                            + (connectAI - connectOpp)           * 10;  // connectivité stratégique
-        }
+
+
+        // Très important
+        score += (millsAI - millsOpp) * 5000;
+
+        // IMPORTANT :
+        // empêcher un moulin adverse
+        score += (threatsAI - threatsOpp) * 2000;
+
+        // Secondaire
+        score += (pawnsAI - pawnsOpp) * 1000;
+
+        score += deadPenalty;
+
+        score += (mobilityAI - mobilityOpp) * 50;
+
+        score -= riskyMillsAI * 200;
+        score += riskyMillsOpp * 200;
+
+        return score;
     }
 
     /** isTerminal sur un snapshot. */
