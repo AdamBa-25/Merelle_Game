@@ -557,34 +557,6 @@ public class MerelleDecider extends Decider {
         //  - Pions coincés : mauvaise position durable → 25
         //  - Pions exposés : vulnérables aux captures futures → 15
         //  - Connectivité / cases ouvertes : développement long terme → 5/8
-        System.out.println((pawnsAI - pawnsOpp)               * 500
-
-                // Moulin actif : forte pression, capture imminente
-                + (millsAI - millsOpp)           * 300
-
-                // Menace directe (2 alignés + 1 libre) : semi-urgence
-                + (nearAI - nearOpp)             * 120
-
-                // Quasi-moulin bloqué par 1 pion adverse
-                + (blockedNearOpp - blockedNearAI) * 60
-
-                // Pions coincés : position durablement mauvaise
-                + (stuckOpp - stuckAI)           * 25
-
-                // Mobilité : options de jeu disponibles
-                + (mobilityAI - mobilityOpp)     * 20
-
-                // Pions exposés hors moulin : vulnérables
-                + (exposedOpp - exposedAI)       * 15
-
-                // Liberté de mouvement par pion
-                + (freedomAI - freedomOpp)       * 8
-
-                // Cases ouvertes : potentiel de développement
-                + (openOneAI - openOneOpp)       * 8
-
-                // Connectivité stratégique (positions à fort potentiel)
-                + (connectAI - connectOpp)       * 5);
         return
                 // Avantage numérique : décisif, chaque pion compte énormément
                 (pawnsAI - pawnsOpp)               * 500
