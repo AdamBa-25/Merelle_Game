@@ -20,7 +20,7 @@ public class MerelleDecider extends Decider {
     public static final int DIFFICULTY_MONTECARLO = 3;
 
     /** Profondeur de recherche pour MiniMax et Alpha-Beta. */
-    private static final int MINIMAX_DEPTH   = 6;
+    private static final int MINIMAX_DEPTH   = 5;
     private static final int ALPHABETA_DEPTH = 5;
 
     /** Nombre de simulations par coup pour Monte Carlo. */
@@ -456,31 +456,27 @@ public class MerelleDecider extends Decider {
         }
 
         // ── 2. États terminaux ──────────────────────────────────────────────
-        // En phase placement les joueurs ont naturellement < 3 pions au début :
-        // ne pas confondre cela avec un état de défaite/victoire.
         if (phase == MerelleStageModel.PHASE_DEPLACEMENT) {
             if (pawnsOpp < 3) return +10000;
             if (pawnsAI  < 3) return -10000;
         }
 
         // ── 3. Mobilité brute ───────────────────────────────────────────────
-        // Un joueur sans coup disponible perd immédiatement → valeur terminale.
         List<int[]> movesAI  = allMovesSnap(snap, colorAI);
         List<int[]> movesOpp = allMovesSnap(snap, colorOpp);
-        if (movesAI.isEmpty())  return -10000;
-        if (movesOpp.isEmpty()) return +10000;
+        if (phase == MerelleStageModel.PHASE_DEPLACEMENT) {
+            if (movesAI.isEmpty())  return -10000;
+            if (movesOpp.isEmpty()) return +10000;
+        }
         int mobilityAI  = movesAI.size();
         int mobilityOpp = movesOpp.size();
 
-        // ── 4. Analyse de tous les moulins en un seul passage ───────────────
-        // Pour chaque moulin, on compte les pions AI/Opp et les cases libres.
-        // Cela permet de calculer d'un coup : moulins complets, quasi-moulins,
-        // moulins bloqués par l'adversaire, moulins ouverts.
-        int millsAI       = 0, millsOpp       = 0; // moulins complets
-        int nearAI        = 0, nearOpp        = 0; // 2 pions + 1 case libre (menace directe)
-        int openOneAI     = 0, openOneOpp     = 0; // 1 pion + 2 cases libres (développement)
-        int blockedNearAI = 0, blockedNearOpp = 0; // 2 pions AI bloqués par 1 opp (et vice-versa)
-        int inMillAI      = 0, inMillOpp      = 0; // pions actuellement dans un moulin complet
+        // ── 4. Analyse des moulins ───────────────────────────────────────────
+        int millsAI = 0, millsOpp = 0;
+        int nearAI  = 0, nearOpp  = 0;
+        int openOneAI = 0, openOneOpp = 0;
+        int blockedNearAI = 0, blockedNearOpp = 0;
+        int inMillAI = 0, inMillOpp = 0;
 
         for (int[] mill : MerelleBoard.MILLS) {
             int cntAI = 0, cntOpp = 0, free = 0;
@@ -489,29 +485,21 @@ public class MerelleDecider extends Decider {
                 else if (snap[pos] == colorOpp) cntOpp++;
                 else                            free++;
             }
-
             if (cntAI  == 3) { millsAI++;  inMillAI  += 3; }
             if (cntOpp == 3) { millsOpp++; inMillOpp += 3; }
-
-            if (cntAI  == 2 && free == 1) nearAI++;          // menace de moulin AI
-            if (cntOpp == 2 && free == 1) nearOpp++;          // menace de moulin Opp
-            if (cntAI  == 2 && cntOpp == 1) blockedNearAI++; // quasi-moulin AI bloqué
-            if (cntOpp == 2 && cntAI  == 1) blockedNearOpp++;// quasi-moulin Opp bloqué
-            if (cntAI  == 1 && free == 2) openOneAI++;        // case ouverte AI
-            if (cntOpp == 1 && free == 2) openOneOpp++;       // case ouverte Opp
+            if (cntAI  == 2 && free == 1)  nearAI++;
+            if (cntOpp == 2 && free == 1)  nearOpp++;
+            if (cntAI  == 2 && cntOpp == 1) blockedNearAI++;
+            if (cntOpp == 2 && cntAI  == 1) blockedNearOpp++;
+            if (cntAI  == 1 && free == 2)  openOneAI++;
+            if (cntOpp == 1 && free == 2)  openOneOpp++;
         }
 
         // ── 5. Analyse pion par pion ─────────────────────────────────────────
-        // Pour chaque pion, on regarde : est-il coincé ? combien de voisins libres ?
-        // Position stratégique (connectivité = nb de moulins potentiels par case).
-        // Les cases "coin" de la Mérelle (B4, D2, D6, F4 = cases à 4 adjacences)
-        // sont les plus précieuses car elles participent à plus de moulins.
-        int stuckAI  = 0, stuckOpp  = 0;   // pions sans aucune case adjacente libre
-        int freedomAI = 0, freedomOpp = 0; // somme des cases libres adjacentes
-        int connectAI = 0, connectOpp = 0; // somme des moulins potentiels par case
+        int stuckAI = 0, stuckOpp = 0;
+        int freedomAI = 0, freedomOpp = 0;
+        int connectAI = 0, connectOpp = 0;
 
-        // Table précalculée : nombre de moulins auxquels appartient chaque case.
-        // Calculé une seule fois ici pour éviter de reboucler sur MILLS.
         int[] millMembership = new int[24];
         for (int[] mill : MerelleBoard.MILLS)
             for (int pos : mill) millMembership[pos]++;
@@ -534,59 +522,46 @@ public class MerelleDecider extends Decider {
             }
         }
 
-        // ── 6. Pions hors moulin (vulnérables à la capture) ─────────────────
-        // Un pion hors moulin est prenable. Moins on en a, mieux c'est.
-        // inMillAI/Opp comptait les pions dans un moulin (avec doublons si 2 moulins),
-        // on cap à pawnsAI/Opp pour éviter les sur-comptages.
         int exposedAI  = pawnsAI  - Math.min(inMillAI,  pawnsAI);
         int exposedOpp = pawnsOpp - Math.min(inMillOpp, pawnsOpp);
 
-        // ── 7. Score final pondéré ───────────────────────────────────────────
-        // Hiérarchie des poids (du plus au moins important) :
-        //   pions (500) >> moulins actifs (300) >> menaces (120)
-        //   >> pions bloqués (60) >> mobilité (20) >> détails positionnels
-        //
-        // Raisonnement :
-        //  - Perdre un pion est catastrophique → poids très élevé (500)
-        //  - Un moulin actif garantit une capture au prochain coup → fort (300)
-        //    mais ne vaut PAS autant que la capture elle-même (500)
-        //  - Une menace (2 alignés) est une semi-urgence → 120
-        //    (l'adversaire doit bloquer sinon on forme le moulin au coup suivant)
-        //  - Quasi-moulin bloqué : danger de capture si le blocker bouge → 60
-        //  - Mobilité : secondaire, aide à ne pas se retrouver bloqué → 20
-        //  - Pions coincés : mauvaise position durable → 25
-        //  - Pions exposés : vulnérables aux captures futures → 15
-        //  - Connectivité / cases ouvertes : développement long terme → 5/8
-        return
-                // Avantage numérique : décisif, chaque pion compte énormément
-                (pawnsAI - pawnsOpp)               * 500
-
-                        // Moulin actif : forte pression, capture imminente
-                        + (millsAI - millsOpp)           * 300
-
-                        // Menace directe (2 alignés + 1 libre) : semi-urgence
-                        + (nearAI - nearOpp)             * 120
-
-                        // Quasi-moulin bloqué par 1 pion adverse
-                        + (blockedNearOpp - blockedNearAI) * 60
-
-                        // Pions coincés : position durablement mauvaise
-                        + (stuckOpp - stuckAI)           * 25
-
-                        // Mobilité : options de jeu disponibles
-                        + (mobilityAI - mobilityOpp)     * 20
-
-                        // Pions exposés hors moulin : vulnérables
-                        + (exposedOpp - exposedAI)       * 15
-
-                        // Liberté de mouvement par pion
-                        + (freedomAI - freedomOpp)       * 8
-
-                        // Cases ouvertes : potentiel de développement
-                        + (openOneAI - openOneOpp)       * 8
-
-                        // Connectivité stratégique (positions à fort potentiel)
-                        + (connectAI - connectOpp)       * 5;
+        // ── 6. Score selon la phase ──────────────────────────────────────────
+        if (phase == MerelleStageModel.PHASE_PLACEMENT) {
+            // PHASE 1 : moulin et blocage avant tout
+            //
+            // nearOpp compte les menaces adverses à UNE case libre.
+            // On les bloque en posant dessus → c'est le cas "blockedNearOpp"
+            // (2 pions adverses + 1 pion AI dans le même trio = blocage confirmé).
+            // On les anticipe en récompensant fortement nearAI (on construit nos propres
+            // menaces, forçant l'adversaire à réagir) et en pénalisant nearOpp brut.
+            return
+                    (millsAI  - millsOpp)            * 600   // moulin = capture garantie
+                            + (blockedNearOpp - blockedNearAI)  * 540   // blocage effectif d'une menace adverse
+                            + (nearAI   - nearOpp)              * 400   // menace directe (2 alignés + 1 libre)
+                            + (pawnsAI  - pawnsOpp)             * 300   // pions posés sur le plateau
+                            + (connectAI - connectOpp)          * 80    // positions stratégiques (cases ×moulins)
+                            + (openOneAI - openOneOpp)          * 50    // cases ouvertes : développement futur
+                            + (mobilityAI - mobilityOpp)        * 10    // secondaire en phase 1
+                            + (exposedOpp - exposedAI)          * 10;   // idem
+        } else {
+            // PHASE 2 : matériel d'abord, puis pression, puis mobilité
+            //
+            // nearOpp monte à 230 (vs 120 avant) : en phase 2, chaque menace adverse
+            // non bloquée mène directement à une perte de pion, plus punissable.
+            // La mobilité passe à 100 : être bloqué est une condition de fin, il faut
+            // absolument conserver des cases libres adjacentes.
+            return
+                    (pawnsAI  - pawnsOpp)              * 500  // perte de pion = catastrophe
+                            + (millsAI  - millsOpp)              * 300  // moulin actif = capture imminente
+                            + (nearAI   - nearOpp)               * 230  // menace directe (renforcée vs phase 1)
+                            + (blockedNearOpp - blockedNearAI)   * 130  // blocage de quasi-moulin adverse
+                            + (mobilityAI - mobilityOpp)         * 100  // éviter l'immobilisation (fin de partie)
+                            + (stuckOpp - stuckAI)               * 50   // pions adverses sans sortie
+                            + (exposedOpp - exposedAI)           * 40   // pions vulnérables hors moulin
+                            + (freedomAI - freedomOpp)           * 15   // liberté de mouvement
+                            + (openOneAI - openOneOpp)           * 10   // potentiel de développement
+                            + (connectAI - connectOpp)           * 10;  // connectivité stratégique
+        }
     }
 
     /** isTerminal sur un snapshot. */

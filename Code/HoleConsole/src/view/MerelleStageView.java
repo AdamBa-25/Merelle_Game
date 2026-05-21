@@ -95,7 +95,9 @@ public class MerelleStageView extends GameStageView {
 
             // rowHeight=2, colWidth=4 : taille de cellule standard boardifier.
             // depth=-1 : rendu en fond, sous les autres éléments.
-            super(element, 2, 4, -1);
+            // innersTop=1, innersLeft=3 : décalage pour laisser de la place
+            //   aux étiquettes de lignes (lettres A–G) et de colonnes (1–7).
+            super(element, 2, 4, -1, 1, 3);
         }
 
         // ── Rendu ─────────────────────────────────────────────────────────────
@@ -108,15 +110,35 @@ public class MerelleStageView extends GameStageView {
         @Override
         protected void render() {
 
-            // Taille imposée par ContainerLook : 7*2=14 lignes, 7*4=28 colonnes
+            // La shape agrandie : +1 ligne en haut (chiffres), +3 colonnes à gauche (lettres)
+            // Dimensions de base : 7*2=14 lignes, 7*4=28 colonnes
+            // Après agrandissement : 15 lignes, 31 colonnes
             setSize(getWidth(), getHeight());
             clearShape();
 
             drawLines();
             drawNodes();
+            drawLabels();
 
             // Laisse ContainerLook placer les pions dans les cellules
             renderInners();
+        }
+
+        // ── Étiquettes de colonnes (1–7) et de lignes (A–G) ─────────────────
+
+        private void drawLabels() {
+
+            // Chiffres 1 à 7 en haut (ligne 0 de la shape), alignés sur chaque nœud de colonne
+            for (int c = 0; c < 7; c++) {
+                int sc = COL_MAP[c] + innersLeft;
+                shape[0][sc] = String.valueOf(c + 1);
+            }
+
+            // Lettres A à G à gauche (colonne 0 de la shape), alignées sur chaque nœud de ligne
+            for (int r = 0; r < 7; r++) {
+                int sr = ROW_MAP[r] + innersTop;
+                shape[sr][0] = String.valueOf((char) ('A' + r));
+            }
         }
 
         // ── Lignes de connexion ───────────────────────────────────────────────
@@ -158,9 +180,9 @@ public class MerelleStageView extends GameStageView {
 
         private void drawH(int gr, int gc1, int gr2, int gc2) {
 
-            int sr  = ROW_MAP[gr];
-            int sc1 = COL_MAP[gc1];
-            int sc2 = COL_MAP[gc2];
+            int sr  = ROW_MAP[gr]  + innersTop;
+            int sc1 = COL_MAP[gc1] + innersLeft;
+            int sc2 = COL_MAP[gc2] + innersLeft;
 
             for (int c = sc1 + 1; c < sc2; c++) {
                 shape[sr][c] = H;
@@ -169,9 +191,9 @@ public class MerelleStageView extends GameStageView {
 
         private void drawV(int gr1, int gc, int gr2, int gc2) {
 
-            int sc  = COL_MAP[gc];
-            int sr1 = ROW_MAP[gr1];
-            int sr2 = ROW_MAP[gr2];
+            int sc  = COL_MAP[gc]  + innersLeft;
+            int sr1 = ROW_MAP[gr1] + innersTop;
+            int sr2 = ROW_MAP[gr2] + innersTop;
 
             for (int r = sr1 + 1; r < sr2; r++) {
                 shape[r][sc] = V;
@@ -197,29 +219,29 @@ public class MerelleStageView extends GameStageView {
 
                     // Carré moyen
                     { 1, 1, 0, 1, 0, 1 },   // B2 ╔
-                    { 1, 3, 0, 1, 1, 1 },   // D2 ╦
+                    { 1, 3, 1, 1, 1, 1 },   // D2 ╦
                     { 1, 5, 0, 1, 1, 0 },   // F2 ╗
-                    { 3, 1, 1, 1, 0, 1 },   // B4 ╠
-                    { 3, 5, 1, 1, 1, 0 },   // F4 ╣
+                    { 3, 1, 1, 1, 1, 1 },   // B4 ╠
+                    { 3, 5, 1, 1, 1, 1 },   // F4 ╣
                     { 5, 1, 1, 0, 0, 1 },   // B6 ╚
-                    { 5, 3, 1, 0, 1, 1 },   // D6 ╩
+                    { 5, 3, 1, 1, 1, 1 },   // D6 ╩
                     { 5, 5, 1, 0, 1, 0 },   // F6 ╝
 
                     // Carré intérieur
                     { 2, 2, 0, 1, 0, 1 },   // C3 ╔
-                    { 2, 3, 0, 1, 1, 1 },   // D3 ╦
+                    { 2, 3, 1, 0, 1, 1 },   // D3 ╦
                     { 2, 4, 0, 1, 1, 0 },   // E3 ╗
                     { 3, 2, 1, 1, 0, 1 },   // C4 ╠
                     { 3, 4, 1, 1, 1, 0 },   // E4 ╣
                     { 4, 2, 1, 0, 0, 1 },   // C5 ╚
-                    { 4, 3, 1, 0, 1, 1 },   // D5 ╩
+                    { 4, 3, 0, 1, 1, 1 },   // D5 ╩
                     { 4, 4, 1, 0, 1, 0 },   // E5 ╝
             };
 
             for (int[] n : nodes) {
 
-                int sr = ROW_MAP[n[0]];
-                int sc = COL_MAP[n[1]];
+                int sr = ROW_MAP[n[0]] + innersTop;
+                int sc = COL_MAP[n[1]] + innersLeft;
 
                 shape[sr][sc] = nodeChar(n[2], n[3], n[4], n[5]);
             }
