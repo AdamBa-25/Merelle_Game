@@ -79,9 +79,12 @@ public class MerelleStageFactory extends StageElementsFactory {
         stageModel.setBoard(board);
 
         // --- 9 pions joueur 0 ---
+        // Les pions sont rendus invisibles en réserve pour ne pas
+        // écraser l'affichage du nom du joueur courant (position (0,0)).
         MerellePawn[] pawnsJ1 = new MerellePawn[9];
         for (int i = 0; i < 9; i++) {
             pawnsJ1[i] = new MerellePawn(colorJ1, stageModel);
+            pawnsJ1[i].setVisible(false);
         }
         stageModel.setPawnsJ1(pawnsJ1);
 
@@ -89,6 +92,7 @@ public class MerelleStageFactory extends StageElementsFactory {
         MerellePawn[] pawnsJ2 = new MerellePawn[9];
         for (int i = 0; i < 9; i++) {
             pawnsJ2[i] = new MerellePawn(colorJ2, stageModel);
+            pawnsJ2[i].setVisible(false);
         }
         stageModel.setPawnsJ2(pawnsJ2);
     }

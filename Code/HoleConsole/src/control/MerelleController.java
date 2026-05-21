@@ -197,7 +197,8 @@ public class MerelleController extends Controller {
                 System.out.println("  (Info) Tous les pions adverses sont en moulin : vous pouvez capturer n'importe lequel.");
             }
             // Exécute la capture via ActionFactory
-            ActionList actions = ActionFactory.generateRemoveFromContainer(model, target);
+            // generateRemoveFromStage : retire le pion du container ET du stage → disparaît du plateau
+            ActionList actions = ActionFactory.generateRemoveFromStage(model, target);
             ActionPlayer play = new ActionPlayer(model, this, actions);
             play.start();
             stageModel.setMillJustFormed(false);
@@ -235,6 +236,9 @@ public class MerelleController extends Controller {
                 System.out.println("ERREUR INTERNE : aucun pion disponible.");
                 return false;
             }
+
+            // Rend le pion visible avant de le poser (il était invisible en réserve)
+            pawn.setVisible(true);
 
             // Place le pion via ActionFactory
             ActionList actions = ActionFactory.generatePutInContainer(
@@ -464,14 +468,16 @@ public class MerelleController extends Controller {
     private boolean wouldReformSameMill(MerelleBoard board, int src, int dest,
                                         int color, int playerId,
                                         MerelleStageModel stageModel) {
-        // Vérifie si dest participerait à un moulin après le déplacement
+        // L'historique des moulins est permanent : tout moulin déjà formé
+        // par ce joueur (à n'importe quel moment de la partie) est interdit à la reformation.
+        // On cherche si le déplacement src→dest formerait un moulin déjà dans l'historique.
         for (int[] mill : MerelleBoard.MILLS) {
             // Le moulin doit contenir dest
             boolean containsDest = false;
             for (int p : mill) if (p == dest) { containsDest = true; break; }
             if (!containsDest) continue;
 
-            // Vérifie si les 3 cases seraient toutes de la bonne couleur après le déplacement
+            // Vérifie si les 3 cases seraient toutes occupées par ce joueur après src→dest
             boolean wouldForm = true;
             for (int p : mill) {
                 if (p == dest) continue; // sera occupé par le pion déplacé
@@ -479,8 +485,10 @@ public class MerelleController extends Controller {
                 MerellePawn pw = board.getPawnAt(p);
                 if (pw == null || pw.getColor() != color) { wouldForm = false; break; }
             }
+            if (!wouldForm) continue;
 
-            if (wouldForm && stageModel.isSameMillAsLast(playerId, mill)) return true;
+            // Ce moulin se formerait : est-il déjà dans l'historique ?
+            if (stageModel.isSameMillAsLast(playerId, mill)) return true;
         }
         return false;
     }

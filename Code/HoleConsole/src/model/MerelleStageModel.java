@@ -45,9 +45,9 @@ public class MerelleStageModel extends GameStageModel {
 
     /**
      * Dernier moulin formé par chaque joueur, encodé comme "pos1-pos2-pos3" trié.
-     * Null si le joueur n'a pas encore formé de moulin, ou si son dernier coup n'en a pas créé.
-     * Utilisé pour appliquer la règle : un joueur ne peut pas casser et reformer
-     * le même moulin deux tours de suite.
+     * Mémorisé jusqu'à ce que le joueur forme un AUTRE moulin (jamais effacé autrement).
+     * Règle : un joueur ne peut pas reformer son dernier moulin tant qu'il n'en a pas
+     * formé un autre entre-temps.
      * Index 0 = joueur 0, index 1 = joueur 1.
      */
     private String[] lastMillByPlayer;
@@ -198,40 +198,44 @@ public class MerelleStageModel extends GameStageModel {
      * @param playerId     index du joueur (0 ou 1)
      * @param millPositions tableau de 3 positions logiques formant le moulin
      */
-    public void recordLastMill(int playerId, int[] millPositions) {
+    /**
+     * Encode un moulin en clé triée "p1-p2-p3".
+     */
+    private String millKey(int[] millPositions) {
         int[] s = millPositions.clone();
-        // Tri à bulles sur 3 éléments
         if (s[0] > s[1]) { int t = s[0]; s[0] = s[1]; s[1] = t; }
         if (s[1] > s[2]) { int t = s[1]; s[1] = s[2]; s[2] = t; }
         if (s[0] > s[1]) { int t = s[0]; s[0] = s[1]; s[1] = t; }
-        lastMillByPlayer[playerId] = s[0] + "-" + s[1] + "-" + s[2];
+        return s[0] + "-" + s[1] + "-" + s[2];
     }
 
     /**
-     * Efface le moulin mémorisé pour le joueur playerId.
-     * À appeler quand le joueur joue un coup qui ne forme pas de moulin.
-     *
-     * @param playerId index du joueur (0 ou 1)
+     * Mémorise le dernier moulin formé par ce joueur.
+     * Écrase le précédent : seul le DERNIER moulin est mémorisé.
+     * La mémoire n'est jamais effacée autrement — le joueur doit former
+     * un autre moulin pour pouvoir reformer celui-ci.
+     */
+    public void recordLastMill(int playerId, int[] millPositions) {
+        lastMillByPlayer[playerId] = millKey(millPositions);
+    }
+
+    /**
+     * Ne fait rien — conservée pour compatibilité mais la mémoire du dernier
+     * moulin ne doit JAMAIS être effacée par un coup sans moulin.
      */
     public void clearLastMill(int playerId) {
-        lastMillByPlayer[playerId] = null;
+        // Intentionnellement vide.
+        // Un coup sans moulin ne réinitialise PAS la mémoire : le joueur
+        // doit former un AUTRE moulin pour pouvoir reformer le précédent.
     }
 
     /**
-     * Retourne true si le moulin à vérifier est identique au dernier moulin
-     * mémorisé pour ce joueur (règle : même moulin interdit 2 tours de suite).
-     *
-     * @param playerId     index du joueur (0 ou 1)
-     * @param millPositions tableau de 3 positions logiques à vérifier
+     * Retourne true si le moulin donné est identique au dernier moulin mémorisé
+     * pour ce joueur → reformation interdite jusqu'à ce qu'un autre moulin soit formé.
      */
     public boolean isSameMillAsLast(int playerId, int[] millPositions) {
         if (lastMillByPlayer[playerId] == null) return false;
-        int[] s = millPositions.clone();
-        if (s[0] > s[1]) { int t = s[0]; s[0] = s[1]; s[1] = t; }
-        if (s[1] > s[2]) { int t = s[1]; s[1] = s[2]; s[2] = t; }
-        if (s[0] > s[1]) { int t = s[0]; s[0] = s[1]; s[1] = t; }
-        String key = s[0] + "-" + s[1] + "-" + s[2];
-        return key.equals(lastMillByPlayer[playerId]);
+        return millKey(millPositions).equals(lastMillByPlayer[playerId]);
     }
 
     @Override

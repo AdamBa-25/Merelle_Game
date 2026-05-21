@@ -119,6 +119,14 @@ public class Merelle {
         System.out.println("Positions valides : A1 A4 A7 | B2 B4 B6 | C3 C4 C5 | D1 D2 D3 D5 D6 D7 | etc.");
         System.out.println();
 
+        // --- Joueur qui commence selon le mode ---
+        int startingPlayer = new java.util.Random().nextInt(2);
+        System.out.println("Tirage au sort : c'est "
+                    + model.getPlayers().get(startingPlayer).getName()
+                    + " qui commence !");
+        model.setIdPlayer(startingPlayer);
+        System.out.println();
+
         GameException error = startGame(control);
         if (error != null)
         {

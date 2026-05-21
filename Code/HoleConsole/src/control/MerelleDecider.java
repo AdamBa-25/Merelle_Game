@@ -20,7 +20,7 @@ public class MerelleDecider extends Decider {
     public static final int DIFFICULTY_MONTECARLO = 3;
 
     /** Profondeur de recherche pour MiniMax et Alpha-Beta. */
-    private static final int MINIMAX_DEPTH   = 5;
+    private static final int MINIMAX_DEPTH   = 6;
     private static final int ALPHABETA_DEPTH = 5;
 
     /** Nombre de simulations par coup pour Monte Carlo. */
@@ -89,13 +89,20 @@ public class MerelleDecider extends Decider {
         if (stageModel.isMillJustFormed()) {
             List<Integer> captures = allCapturesSnap(snap, colorOpp);
             int bestScore = Integer.MIN_VALUE;
-            int bestPos   = captures.get(0);
+            List<Integer> bestCaptures = new ArrayList<>();
             for (int pos : captures) {
                 int[] next = snapCopy(snap);
                 next[pos] = -1;
                 int score = minimax(next, MINIMAX_DEPTH - 1, false, colorAI, colorOpp, phase);
-                if (score > bestScore) { bestScore = score; bestPos = pos; }
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestCaptures.clear();
+                    bestCaptures.add(pos);
+                } else if (score == bestScore) {
+                    bestCaptures.add(pos);
+                }
             }
+            int bestPos = bestCaptures.get(random.nextInt(bestCaptures.size()));
             return "X" + posToCoord(bestPos);
         }
 
@@ -103,20 +110,27 @@ public class MerelleDecider extends Decider {
         if (phase == MerelleStageModel.PHASE_PLACEMENT) {
             List<Integer> placements = allPlacementsSnap(snap);
             int bestScore = Integer.MIN_VALUE;
-            int bestPos   = placements.get(0);
+            List<Integer> bestPlacements = new ArrayList<>();
             for (int pos : placements) {
                 int[] next = snapCopy(snap);
                 next[pos] = colorAI;
                 int score = minimax(next, MINIMAX_DEPTH - 1, false, colorAI, colorOpp, phase);
-                if (score > bestScore) { bestScore = score; bestPos = pos; }
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestPlacements.clear();
+                    bestPlacements.add(pos);
+                } else if (score == bestScore) {
+                    bestPlacements.add(pos);
+                }
             }
+            int bestPos = bestPlacements.get(random.nextInt(bestPlacements.size()));
             return posToCoord(bestPos);
         }
 
         // --- PHASE 2 : déplacement ---
         List<int[]> moves = allMovesSnap(snap, colorAI);
-        int bestScore  = Integer.MIN_VALUE;
-        int[] bestMove = moves.get(0);
+        int bestScore = Integer.MIN_VALUE;
+        List<int[]> bestMoves = new ArrayList<>();
         for (int[] mv : moves) {
             int[] next = snapCopy(snap);
             next[mv[1]] = next[mv[0]];
@@ -127,11 +141,18 @@ public class MerelleDecider extends Decider {
             // Ex : si la dernière fois il a joué "9->10", jouer "10->9" = ping-pong.
             String moveStr = mv[0] + "->" + mv[1];
             if (isPingPong(lastOwnMove, moveStr)) {
-                score -= 5000;
+                score -= 80;
             }
 
-            if (score > bestScore) { bestScore = score; bestMove = mv; }
+            if (score > bestScore) {
+                bestScore = score;
+                bestMoves.clear();
+                bestMoves.add(mv);
+            } else if (score == bestScore) {
+                bestMoves.add(mv);
+            }
         }
+        int[] bestMove = bestMoves.get(random.nextInt(bestMoves.size()));
         return posToCoord(bestMove[0]) + " " + posToCoord(bestMove[1]);
     }
 
@@ -185,10 +206,11 @@ public class MerelleDecider extends Decider {
                         int colorAI, int colorOpp, int phase) {
 
         if (depth == 0 || isTerminalSnap(snap, colorAI, colorOpp, phase)) {
-            return evaluateSnap(snap, colorAI, colorOpp);
+            return evaluateSnap(snap, colorAI, colorOpp, phase);
         }
 
-        int currentColor = isMaximizing ? colorAI : colorOpp;
+        int currentColor  = isMaximizing ? colorAI  : colorOpp;
+        int opponentColor = isMaximizing ? colorOpp : colorAI;
 
         if (isMaximizing) {
             int best = Integer.MIN_VALUE;
@@ -196,17 +218,37 @@ public class MerelleDecider extends Decider {
                 for (int pos : allPlacementsSnap(snap)) {
                     int[] next = snapCopy(snap);
                     next[pos] = currentColor;
-                    best = Math.max(best, minimax(next, depth - 1, false, colorAI, colorOpp, phase));
+                    // Si ce placement forme un moulin, simuler chaque capture possible
+                    if (formsMillSnap(next, pos, currentColor)) {
+                        List<Integer> captures = allCapturesSnap(next, opponentColor);
+                        for (int capPos : captures) {
+                            int[] afterCap = snapCopy(next);
+                            afterCap[capPos] = -1;
+                            best = Math.max(best, minimax(afterCap, depth - 1, false, colorAI, colorOpp, phase));
+                        }
+                    } else {
+                        best = Math.max(best, minimax(next, depth - 1, false, colorAI, colorOpp, phase));
+                    }
                 }
             } else {
                 for (int[] mv : allMovesSnap(snap, currentColor)) {
                     int[] next = snapCopy(snap);
                     next[mv[1]] = next[mv[0]];
                     next[mv[0]] = -1;
-                    best = Math.max(best, minimax(next, depth - 1, false, colorAI, colorOpp, phase));
+                    // Si ce déplacement forme un moulin, simuler chaque capture possible
+                    if (formsMillSnap(next, mv[1], currentColor)) {
+                        List<Integer> captures = allCapturesSnap(next, opponentColor);
+                        for (int capPos : captures) {
+                            int[] afterCap = snapCopy(next);
+                            afterCap[capPos] = -1;
+                            best = Math.max(best, minimax(afterCap, depth - 1, false, colorAI, colorOpp, phase));
+                        }
+                    } else {
+                        best = Math.max(best, minimax(next, depth - 1, false, colorAI, colorOpp, phase));
+                    }
                 }
             }
-            return best == Integer.MIN_VALUE ? evaluateSnap(snap, colorAI, colorOpp) : best;
+            return best == Integer.MIN_VALUE ? evaluateSnap(snap, colorAI, colorOpp, phase) : best;
 
         } else {
             int best = Integer.MAX_VALUE;
@@ -214,18 +256,54 @@ public class MerelleDecider extends Decider {
                 for (int pos : allPlacementsSnap(snap)) {
                     int[] next = snapCopy(snap);
                     next[pos] = currentColor;
-                    best = Math.min(best, minimax(next, depth - 1, true, colorAI, colorOpp, phase));
+                    // Si ce placement forme un moulin, simuler chaque capture possible
+                    if (formsMillSnap(next, pos, currentColor)) {
+                        List<Integer> captures = allCapturesSnap(next, opponentColor);
+                        for (int capPos : captures) {
+                            int[] afterCap = snapCopy(next);
+                            afterCap[capPos] = -1;
+                            best = Math.min(best, minimax(afterCap, depth - 1, true, colorAI, colorOpp, phase));
+                        }
+                    } else {
+                        best = Math.min(best, minimax(next, depth - 1, true, colorAI, colorOpp, phase));
+                    }
                 }
             } else {
                 for (int[] mv : allMovesSnap(snap, currentColor)) {
                     int[] next = snapCopy(snap);
                     next[mv[1]] = next[mv[0]];
                     next[mv[0]] = -1;
-                    best = Math.min(best, minimax(next, depth - 1, true, colorAI, colorOpp, phase));
+                    // Si ce déplacement forme un moulin, simuler chaque capture possible
+                    if (formsMillSnap(next, mv[1], currentColor)) {
+                        List<Integer> captures = allCapturesSnap(next, opponentColor);
+                        for (int capPos : captures) {
+                            int[] afterCap = snapCopy(next);
+                            afterCap[capPos] = -1;
+                            best = Math.min(best, minimax(afterCap, depth - 1, true, colorAI, colorOpp, phase));
+                        }
+                    } else {
+                        best = Math.min(best, minimax(next, depth - 1, true, colorAI, colorOpp, phase));
+                    }
                 }
             }
-            return best == Integer.MAX_VALUE ? evaluateSnap(snap, colorAI, colorOpp) : best;
+            return best == Integer.MAX_VALUE ? evaluateSnap(snap, colorAI, colorOpp, phase) : best;
         }
+    }
+
+    /**
+     * Vérifie si placer/déplacer un pion en {@code pos} forme un moulin pour {@code color}
+     * dans le snapshot donné (le pion est déjà posé en snap[pos] = color avant l'appel).
+     */
+    private boolean formsMillSnap(int[] snap, int pos, int color) {
+        for (int[] mill : MerelleBoard.MILLS) {
+            boolean containsPos = false;
+            for (int p : mill) if (p == pos) { containsPos = true; break; }
+            if (!containsPos) continue;
+            boolean full = true;
+            for (int p : mill) if (snap[p] != color) { full = false; break; }
+            if (full) return true;
+        }
+        return false;
     }
 
     // ================================================================
@@ -355,8 +433,20 @@ public class MerelleDecider extends Decider {
         return snap.clone();
     }
 
-    /** Évaluation heuristique sur un snapshot int[24]. */
+    /**
+     * Évaluation heuristique sur un snapshot int[24].
+     * Surcharge sans phase : suppose PHASE_DEPLACEMENT (appels legacy).
+     */
     private int evaluateSnap(int[] snap, int colorAI, int colorOpp) {
+        return evaluateSnap(snap, colorAI, colorOpp, MerelleStageModel.PHASE_DEPLACEMENT);
+    }
+
+    /**
+     * Évaluation heuristique sur un snapshot int[24], avec conscience de la phase.
+     * Le test "pions < 3 = fin de partie" n'est valide qu'en phase déplacement ;
+     * en phase placement les joueurs ont naturellement peu de pions au début.
+     */
+    private int evaluateSnap(int[] snap, int colorAI, int colorOpp, int phase) {
 
         // ── 1. Comptage des pions ───────────────────────────────────────────
         int pawnsAI = 0, pawnsOpp = 0;
@@ -365,9 +455,13 @@ public class MerelleDecider extends Decider {
             if (v == colorOpp) pawnsOpp++;
         }
 
-        // ── 2. États terminaux (priorité absolue, jamais dépassé) ───────────
-        if (pawnsOpp < 3) return +10000;
-        if (pawnsAI  < 3) return -10000;
+        // ── 2. États terminaux ──────────────────────────────────────────────
+        // En phase placement les joueurs ont naturellement < 3 pions au début :
+        // ne pas confondre cela avec un état de défaite/victoire.
+        if (phase == MerelleStageModel.PHASE_DEPLACEMENT) {
+            if (pawnsOpp < 3) return +10000;
+            if (pawnsAI  < 3) return -10000;
+        }
 
         // ── 3. Mobilité brute ───────────────────────────────────────────────
         // Un joueur sans coup disponible perd immédiatement → valeur terminale.
@@ -448,38 +542,79 @@ public class MerelleDecider extends Decider {
         int exposedOpp = pawnsOpp - Math.min(inMillOpp, pawnsOpp);
 
         // ── 7. Score final pondéré ───────────────────────────────────────────
-        // Chaque critère est pondéré selon son impact réel sur l'issue de la partie.
-        // Hiérarchie : moulins > menaces > pions > mobilité > position > détails
+        // Hiérarchie des poids (du plus au moins important) :
+        //   pions (500) >> moulins actifs (300) >> menaces (120)
+        //   >> pions bloqués (60) >> mobilité (20) >> détails positionnels
+        //
+        // Raisonnement :
+        //  - Perdre un pion est catastrophique → poids très élevé (500)
+        //  - Un moulin actif garantit une capture au prochain coup → fort (300)
+        //    mais ne vaut PAS autant que la capture elle-même (500)
+        //  - Une menace (2 alignés) est une semi-urgence → 120
+        //    (l'adversaire doit bloquer sinon on forme le moulin au coup suivant)
+        //  - Quasi-moulin bloqué : danger de capture si le blocker bouge → 60
+        //  - Mobilité : secondaire, aide à ne pas se retrouver bloqué → 20
+        //  - Pions coincés : mauvaise position durable → 25
+        //  - Pions exposés : vulnérables aux captures futures → 15
+        //  - Connectivité / cases ouvertes : développement long terme → 5/8
+        System.out.println((pawnsAI - pawnsOpp)               * 500
+
+                // Moulin actif : forte pression, capture imminente
+                + (millsAI - millsOpp)           * 300
+
+                // Menace directe (2 alignés + 1 libre) : semi-urgence
+                + (nearAI - nearOpp)             * 120
+
+                // Quasi-moulin bloqué par 1 pion adverse
+                + (blockedNearOpp - blockedNearAI) * 60
+
+                // Pions coincés : position durablement mauvaise
+                + (stuckOpp - stuckAI)           * 25
+
+                // Mobilité : options de jeu disponibles
+                + (mobilityAI - mobilityOpp)     * 20
+
+                // Pions exposés hors moulin : vulnérables
+                + (exposedOpp - exposedAI)       * 15
+
+                // Liberté de mouvement par pion
+                + (freedomAI - freedomOpp)       * 8
+
+                // Cases ouvertes : potentiel de développement
+                + (openOneAI - openOneOpp)       * 8
+
+                // Connectivité stratégique (positions à fort potentiel)
+                + (connectAI - connectOpp)       * 5);
         return
-                // Avantage numérique : chaque pion supplémentaire vaut 10
-                (pawnsAI - pawnsOpp)           * 10
+                // Avantage numérique : décisif, chaque pion compte énormément
+                (pawnsAI - pawnsOpp)               * 500
 
-                        // Moulins complets : très fort, donne une capture immédiate
-                        + (millsAI - millsOpp)           * 50
+                        // Moulin actif : forte pression, capture imminente
+                        + (millsAI - millsOpp)           * 300
 
-                        // Menaces directes : 2 pions alignés + 1 case libre → moulin au prochain coup
-                        + (nearAI - nearOpp)             * 30
+                        // Menace directe (2 alignés + 1 libre) : semi-urgence
+                        + (nearAI - nearOpp)             * 120
 
-                        // Quasi-moulins bloqués par l'adversaire : mauvais pour celui qui est bloqué
-                        + (blockedNearOpp - blockedNearAI) * 15
+                        // Quasi-moulin bloqué par 1 pion adverse
+                        + (blockedNearOpp - blockedNearAI) * 60
 
-                        // Mobilité globale : plus de coups = plus d'options
-                        + (mobilityAI - mobilityOpp)     * 5
+                        // Pions coincés : position durablement mauvaise
+                        + (stuckOpp - stuckAI)           * 25
 
-                        // Liberté par pion : cases libres adjacentes = manœuvrabilité
-                        + (freedomAI - freedomOpp)       * 3
+                        // Mobilité : options de jeu disponibles
+                        + (mobilityAI - mobilityOpp)     * 20
 
-                        // Pions coincés (aucune case adjacente libre) : très mauvais
-                        + (stuckOpp - stuckAI)           * 12
+                        // Pions exposés hors moulin : vulnérables
+                        + (exposedOpp - exposedAI)       * 15
 
-                        // Pions exposés (hors moulin) : ils peuvent être capturés
-                        + (exposedOpp - exposedAI)       * 8
+                        // Liberté de mouvement par pion
+                        + (freedomAI - freedomOpp)       * 8
 
-                        // Connectivité stratégique : cases qui participent à plus de moulins
-                        + (connectAI - connectOpp)       * 2
+                        // Cases ouvertes : potentiel de développement
+                        + (openOneAI - openOneOpp)       * 8
 
-                        // Cases ouvertes : développement, potentiel futur
-                        + (openOneAI - openOneOpp)       * 4;
+                        // Connectivité stratégique (positions à fort potentiel)
+                        + (connectAI - connectOpp)       * 5;
     }
 
     /** isTerminal sur un snapshot. */
