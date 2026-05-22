@@ -21,13 +21,19 @@ public class MerelleDecider extends Decider {
 
     /** Profondeur de recherche pour MiniMax et Alpha-Beta. */
     private static final int MINIMAX_DEPTH   = 5;
-    private static final int ALPHABETA_DEPTH = 5;
+    private static final int ALPHABETA_DEPTH = 7;
 
     /** Nombre de simulations par coup pour Monte Carlo. */
-    private static final int MCTS_SIMULATIONS = 50;
+    private static final int MCTS_SIMULATIONS = 120;
 
     /** Difficulté active, à définir avant le lancement de la partie. */
     public static int aiDifficulty = DIFFICULTY_MINIMAX;
+
+    /**
+     * Difficultés par joueur (index 0 et 1).
+     * Si null, on utilise aiDifficulty comme valeur commune.
+     */
+    public static int[] aiDifficultyPerPlayer = null;
 
     private static final Random random = new Random();
 
@@ -51,7 +57,10 @@ public class MerelleDecider extends Decider {
      * @return la saisie simulée : "A1" (placement), "A1 B2" (déplacement), "XA1" (capture)
      */
     public String getDecision(MerelleStageModel stageModel, int playerId) {
-        switch (aiDifficulty) {
+        int diff = (aiDifficultyPerPlayer != null && playerId >= 0 && playerId < aiDifficultyPerPlayer.length)
+                ? aiDifficultyPerPlayer[playerId]
+                : aiDifficulty;
+        switch (diff) {
             case DIFFICULTY_ALPHABETA:  return getDecisionAlphaBeta(stageModel, playerId);
             case DIFFICULTY_MONTECARLO: return getDecisionMonteCarlo(stageModel, playerId);
             default:                    return getDecisionMinimax(stageModel, playerId);
@@ -138,10 +147,15 @@ public class MerelleDecider extends Decider {
             int score = minimax(next, MINIMAX_DEPTH - 1, false, colorAI, colorOpp, phase);
 
             // Pénalise le coup inverse du dernier coup de CE joueur (ping-pong).
-            // Ex : si la dernière fois il a joué "9->10", jouer "10->9" = ping-pong.
             String moveStr = mv[0] + "->" + mv[1];
             if (isPingPong(lastOwnMove, moveStr)) {
                 score -= 500;
+            }
+
+            // Pénalise fortement la reformation du même moulin que le dernier formé.
+            // L'IA pourra le reformer seulement après en avoir fait un autre.
+            if (wouldReformLastMillSnap(snap, mv[0], mv[1], colorAI, playerId, stageModel)) {
+                score -= 100000;
             }
 
             if (score > bestScore) {
@@ -311,39 +325,291 @@ public class MerelleDecider extends Decider {
     // ================================================================
 
     /**
-     * Point d'entrée Alpha-Beta.
-     * Identique à getDecisionMinimax() mais appelle alphabeta() au lieu de minimax().
-     * Peut utiliser une profondeur plus grande (ALPHABETA_DEPTH) grâce à l'élagage.
+     * Point d'entrée de la stratégie Alpha-Bêta.
+     * Sélectionne le meilleur coup possible en explorant l'arbre de jeu
+     * avec l'algorithme Minimax optimisé par élagage Alpha-Bêta.
      *
-     * @param stageModel le modèle du stage courant
-     * @param playerId   index du joueur IA (0 ou 1)
-     * @return la meilleure saisie trouvée par Alpha-Beta
+     * Cette méthode est structurellement identique à MiniMax :
+     * elle génère tous les coups possibles selon la phase de jeu
+     * (placement, déplacement, capture), puis évalue chaque résultat
+     * via la fonction alphabeta().
+     *
+     * Différence principale : les branches inutiles sont coupées dès que
+     * alpha >= beta, ce qui réduit fortement le nombre de positions explorées.
+     *
+     * @param stageModel modèle du stage courant contenant l'état du jeu
+     * @param playerId   identifiant du joueur IA (0 ou 1)
+     * @return une chaîne représentant le coup choisi :
+     *         - "A1" pour un placement
+     *         - "A1 B2" pour un déplacement
+     *         - "XA1" pour une capture
      */
     private String getDecisionAlphaBeta(MerelleStageModel stageModel, int playerId) {
-        // TODO
-        return null;
+        MerelleBoard board = stageModel.getBoard();
+        int phase = stageModel.getCurrentPhase();
+
+        int colorAI  = (playerId == 0) ? stageModel.getColorJ1() : stageModel.getColorJ2();
+        int colorOpp = (playerId == 0) ? stageModel.getColorJ2() : stageModel.getColorJ1();
+
+        int[] snap = boardSnapshot(board, colorAI, colorOpp);
+
+        String lastOwnMove = getLastOwnMove(stageModel, playerId);
+
+        // ===================== CAPTURE =====================
+        if (stageModel.isMillJustFormed()) {
+            List<Integer> captures = allCapturesSnap(snap, colorOpp);
+
+            int bestScore = Integer.MIN_VALUE;
+            List<Integer> best = new ArrayList<>();
+
+            for (int pos : captures) {
+                int[] next = snapCopy(snap);
+                next[pos] = -1;
+
+                int score = alphabeta(next, ALPHABETA_DEPTH - 1,
+                        Integer.MIN_VALUE, Integer.MAX_VALUE,
+                        false, colorAI, colorOpp, phase);
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    best.clear();
+                    best.add(pos);
+                } else if (score == bestScore) {
+                    best.add(pos);
+                }
+            }
+
+            return "X" + posToCoord(best.get(random.nextInt(best.size())));
+        }
+
+        // ===================== PLACEMENT =====================
+        if (phase == MerelleStageModel.PHASE_PLACEMENT) {
+            List<Integer> placements = allPlacementsSnap(snap);
+
+            int bestScore = Integer.MIN_VALUE;
+            List<Integer> best = new ArrayList<>();
+
+            for (int pos : placements) {
+                int[] next = snapCopy(snap);
+                next[pos] = colorAI;
+
+                int score = alphabeta(next, ALPHABETA_DEPTH - 1,
+                        Integer.MIN_VALUE, Integer.MAX_VALUE,
+                        false, colorAI, colorOpp, phase);
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    best.clear();
+                    best.add(pos);
+                } else if (score == bestScore) {
+                    best.add(pos);
+                }
+            }
+
+            return posToCoord(best.get(random.nextInt(best.size())));
+        }
+
+        // ===================== DEPLACEMENT =====================
+        List<int[]> moves = allMovesSnap(snap, colorAI);
+
+        int bestScore = Integer.MIN_VALUE;
+        List<int[]> bestMoves = new ArrayList<>();
+
+        for (int[] mv : moves) {
+            int[] next = snapCopy(snap);
+            next[mv[1]] = next[mv[0]];
+            next[mv[0]] = -1;
+
+            int score = alphabeta(next, ALPHABETA_DEPTH - 1,
+                    Integer.MIN_VALUE, Integer.MAX_VALUE,
+                    false, colorAI, colorOpp, phase);
+
+            String moveStr = mv[0] + "->" + mv[1];
+            if (isPingPong(lastOwnMove, moveStr)) {
+                score -= 500;
+            }
+
+            // Pénalise fortement la reformation du même moulin que le dernier formé.
+            if (wouldReformLastMillSnap(snap, mv[0], mv[1], colorAI, playerId, stageModel)) {
+                score -= 100000;
+            }
+
+            if (score > bestScore) {
+                bestScore = score;
+                bestMoves.clear();
+                bestMoves.add(mv);
+            } else if (score == bestScore) {
+                bestMoves.add(mv);
+            }
+        }
+
+        int[] best = bestMoves.get(random.nextInt(bestMoves.size()));
+        return posToCoord(best[0]) + " " + posToCoord(best[1]);
     }
 
     /**
-     * Algorithme Alpha-Beta récursif (élagage du MiniMax).
-     * Même logique que minimax() avec deux paramètres supplémentaires :
-     * - alpha : meilleur score garanti pour le maximisant (IA)
-     * - beta  : meilleur score garanti pour le minimisant (adversaire)
-     * On élaguer une branche dès que alpha >= beta (inutile de continuer).
+     * Implémentation récursive de l'algorithme Alpha-Bêta.
+     * Variante optimisée du Minimax qui réduit le nombre de nœuds explorés
+     * grâce à l'élagage des branches inutiles.
      *
-     * @param board          état actuel du plateau
-     * @param depth          profondeur restante
-     * @param alpha          borne basse (score min garanti pour le maximisant)
-     * @param beta           borne haute (score max garanti pour le minimisant)
-     * @param isMaximizing   true si c'est le tour de l'IA
-     * @param playerId       index du joueur IA (0 ou 1)
-     * @param phase          phase actuelle : PHASE_PLACEMENT ou PHASE_DEPLACEMENT
-     * @return score de l'état après élagage
+     * L'algorithme maintient deux bornes :
+     * - alpha : meilleure valeur garantie pour le joueur maximisant
+     * - beta  : meilleure valeur garantie pour le joueur minimisant
+     *
+     * Dès qu'une position satisfait la condition alpha >= beta,
+     * l'exploration de la branche courante est interrompue car elle ne peut
+     * pas influencer la décision finale.
+     *
+     * La fonction explore les trois cas de jeu :
+     * - phase de placement
+     * - phase de déplacement
+     * - capture après formation d'un moulin
+     *
+     * @param snap        état actuel du plateau de jeu
+     * @param depth        profondeur restante de recherche
+     * @param alpha        meilleure valeur déjà trouvée pour le joueur MAX
+     * @param beta         meilleure valeur déjà trouvée pour le joueur MIN
+     * @param isMaximizing true si c'est le tour de l'IA, false sinon
+     * @param colorAI     identifiant du joueur IA (0 ou 1)
+     * @param phase        phase actuelle du jeu (placement ou déplacement)
+     * @return score heuristique de la position évaluée
      */
-    private int alphabeta(MerelleBoard board, int depth, int alpha, int beta,
-                          boolean isMaximizing, int playerId, int phase) {
-        // TODO
-        return 0;
+    private int alphabeta(int[] snap, int depth, int alpha, int beta,
+                          boolean isMaximizing,
+                          int colorAI, int colorOpp, int phase) {
+
+        if (depth == 0 || isTerminalSnap(snap, colorAI, colorOpp, phase)) {
+            return evaluateSnap(snap, colorAI, colorOpp, phase);
+        }
+
+        int currentColor = isMaximizing ? colorAI : colorOpp;
+
+        if (isMaximizing) {
+            int best = Integer.MIN_VALUE;
+
+            if (phase == MerelleStageModel.PHASE_PLACEMENT) {
+
+                for (int pos : allPlacementsSnap(snap)) {
+                    int[] next = snapCopy(snap);
+                    next[pos] = currentColor;
+
+                    if (formsMillSnap(next, pos, currentColor)) {
+                        for (int cap : allCapturesSnap(next, colorOpp)) {
+                            int[] after = snapCopy(next);
+                            after[cap] = -1;
+
+                            best = Math.max(best, alphabeta(after, depth - 1,
+                                    alpha, beta, false,
+                                    colorAI, colorOpp, phase));
+
+                            alpha = Math.max(alpha, best);
+                            if (beta <= alpha) return best; // PRUNING
+                        }
+                    } else {
+                        best = Math.max(best, alphabeta(next, depth - 1,
+                                alpha, beta, false,
+                                colorAI, colorOpp, phase));
+
+                        alpha = Math.max(alpha, best);
+                        if (beta <= alpha) return best;
+                    }
+                }
+
+            } else {
+
+                for (int[] mv : allMovesSnap(snap, currentColor)) {
+                    int[] next = snapCopy(snap);
+                    next[mv[1]] = next[mv[0]];
+                    next[mv[0]] = -1;
+
+                    if (formsMillSnap(next, mv[1], currentColor)) {
+                        for (int cap : allCapturesSnap(next, colorOpp)) {
+                            int[] after = snapCopy(next);
+                            after[cap] = -1;
+
+                            best = Math.max(best, alphabeta(after, depth - 1,
+                                    alpha, beta, false,
+                                    colorAI, colorOpp, phase));
+
+                            alpha = Math.max(alpha, best);
+                            if (beta <= alpha) return best;
+                        }
+                    } else {
+                        best = Math.max(best, alphabeta(next, depth - 1,
+                                alpha, beta, false,
+                                colorAI, colorOpp, phase));
+
+                        alpha = Math.max(alpha, best);
+                        if (beta <= alpha) return best;
+                    }
+                }
+            }
+
+            return best;
+
+        } else {
+            int best = Integer.MAX_VALUE;
+
+            if (phase == MerelleStageModel.PHASE_PLACEMENT) {
+
+                for (int pos : allPlacementsSnap(snap)) {
+                    int[] next = snapCopy(snap);
+                    next[pos] = currentColor;
+
+                    if (formsMillSnap(next, pos, currentColor)) {
+                        for (int cap : allCapturesSnap(next, colorAI)) {
+                            int[] after = snapCopy(next);
+                            after[cap] = -1;
+
+                            best = Math.min(best, alphabeta(after, depth - 1,
+                                    alpha, beta, true,
+                                    colorAI, colorOpp, phase));
+
+                            beta = Math.min(beta, best);
+                            if (beta <= alpha) return best;
+                        }
+                    } else {
+                        best = Math.min(best, alphabeta(next, depth - 1,
+                                alpha, beta, true,
+                                colorAI, colorOpp, phase));
+
+                        beta = Math.min(beta, best);
+                        if (beta <= alpha) return best;
+                    }
+                }
+
+            } else {
+
+                for (int[] mv : allMovesSnap(snap, currentColor)) {
+                    int[] next = snapCopy(snap);
+                    next[mv[1]] = next[mv[0]];
+                    next[mv[0]] = -1;
+
+                    if (formsMillSnap(next, mv[1], currentColor)) {
+                        for (int cap : allCapturesSnap(next, colorAI)) {
+                            int[] after = snapCopy(next);
+                            after[cap] = -1;
+
+                            best = Math.min(best, alphabeta(after, depth - 1,
+                                    alpha, beta, true,
+                                    colorAI, colorOpp, phase));
+
+                            beta = Math.min(beta, best);
+                            if (beta <= alpha) return best;
+                        }
+                    } else {
+                        best = Math.min(best, alphabeta(next, depth - 1,
+                                alpha, beta, true,
+                                colorAI, colorOpp, phase));
+
+                        beta = Math.min(beta, best);
+                        if (beta <= alpha) return best;
+                    }
+                }
+            }
+
+            return best;
+        }
     }
 
     // ================================================================
@@ -360,16 +626,238 @@ public class MerelleDecider extends Decider {
      * @return le coup avec le meilleur taux de victoires simulées
      */
     private String getDecisionMonteCarlo(MerelleStageModel stageModel, int playerId) {
-        // TODO
-        return null;
+        MerelleBoard board = stageModel.getBoard();
+        int phase = stageModel.getCurrentPhase();
+
+        int colorAI  = (playerId == 0) ? stageModel.getColorJ1() : stageModel.getColorJ2();
+        int colorOpp = (playerId == 0) ? stageModel.getColorJ2() : stageModel.getColorJ1();
+
+        int[] snap = boardSnapshot(board, colorAI, colorOpp);
+
+        String lastOwnMove = getLastOwnMove(stageModel, playerId);
+
+        // ===================== CAPTURE =====================
+        if (stageModel.isMillJustFormed()) {
+            List<Integer> captures = allCapturesSnap(snap, colorOpp);
+            int bestWins = -1;
+            List<Integer> bestCaptures = new ArrayList<>();
+
+            for (int pos : captures) {
+                int[] next = snapCopy(snap);
+                next[pos] = -1;
+                int wins = 0;
+                for (int i = 0; i < MCTS_SIMULATIONS; i++) {
+                    int winner = simulateRandomGameSnap(snapCopy(next), 1 - playerId, phase, colorAI, colorOpp);
+                    if (winner == playerId) wins++;
+                }
+                if (wins > bestWins) {
+                    bestWins = wins;
+                    bestCaptures.clear();
+                    bestCaptures.add(pos);
+                } else if (wins == bestWins) {
+                    bestCaptures.add(pos);
+                }
+            }
+            return "X" + posToCoord(bestCaptures.get(random.nextInt(bestCaptures.size())));
+        }
+
+        // ===================== PLACEMENT =====================
+        if (phase == MerelleStageModel.PHASE_PLACEMENT) {
+            List<Integer> placements = allPlacementsSnap(snap);
+            int bestWins = -1;
+            List<Integer> bestPlacements = new ArrayList<>();
+
+            for (int pos : placements) {
+                int[] next = snapCopy(snap);
+                next[pos] = colorAI;
+                int wins = 0;
+                for (int i = 0; i < MCTS_SIMULATIONS; i++) {
+                    // Si ce placement forme un moulin, simuler une capture aléatoire avant
+                    int[] afterCap = next;
+                    if (formsMillSnap(next, pos, colorAI)) {
+                        List<Integer> caps = allCapturesSnap(next, colorOpp);
+                        if (!caps.isEmpty()) {
+                            afterCap = snapCopy(next);
+                            afterCap[caps.get(random.nextInt(caps.size()))] = -1;
+                        }
+                    }
+                    int winner = simulateRandomGameSnap(snapCopy(afterCap), 1 - playerId, phase, colorAI, colorOpp);
+                    if (winner == playerId) wins++;
+                }
+                if (wins > bestWins) {
+                    bestWins = wins;
+                    bestPlacements.clear();
+                    bestPlacements.add(pos);
+                } else if (wins == bestWins) {
+                    bestPlacements.add(pos);
+                }
+            }
+            return posToCoord(bestPlacements.get(random.nextInt(bestPlacements.size())));
+        }
+
+        // ===================== DEPLACEMENT =====================
+        List<int[]> moves = allMovesSnap(snap, colorAI);
+        int bestWins = -1;
+        List<int[]> bestMoves = new ArrayList<>();
+
+        for (int[] mv : moves) {
+            int[] next = snapCopy(snap);
+            next[mv[1]] = next[mv[0]];
+            next[mv[0]] = -1;
+
+            // Filtre anti-ping-pong et anti-reformation de moulin dès la racine
+            String moveStr = mv[0] + "->" + mv[1];
+            if (isPingPong(lastOwnMove, moveStr)) continue;
+            if (wouldReformLastMillSnap(snap, mv[0], mv[1], colorAI, playerId, stageModel)) continue;
+
+            int wins = 0;
+            for (int i = 0; i < MCTS_SIMULATIONS; i++) {
+                // Si ce déplacement forme un moulin, simuler une capture aléatoire avant
+                int[] afterCap = next;
+                if (formsMillSnap(next, mv[1], colorAI)) {
+                    List<Integer> caps = allCapturesSnap(next, colorOpp);
+                    if (!caps.isEmpty()) {
+                        afterCap = snapCopy(next);
+                        afterCap[caps.get(random.nextInt(caps.size()))] = -1;
+                    }
+                }
+                int winner = simulateRandomGameSnap(snapCopy(afterCap), 1 - playerId, phase, colorAI, colorOpp);
+                if (winner == playerId) wins++;
+            }
+            if (wins > bestWins) {
+                bestWins = wins;
+                bestMoves.clear();
+                bestMoves.add(mv);
+            } else if (wins == bestWins) {
+                bestMoves.add(mv);
+            }
+        }
+
+        // Repli si tous les coups étaient filtrés (ne devrait pas arriver)
+        if (bestMoves.isEmpty()) {
+            for (int[] mv : moves) bestMoves.add(mv);
+        }
+
+        int[] best = bestMoves.get(random.nextInt(bestMoves.size()));
+        return posToCoord(best[0]) + " " + posToCoord(best[1]);
+    }
+
+    /**
+     * Simule une partie complètement aléatoire depuis un snapshot int[24],
+     * jusqu'à un état terminal ou une limite de tours.
+     * À chaque tour, choisit un coup aléatoire parmi les coups valides,
+     * en évitant le ping-pong (coup immédiatement inverse du précédent).
+     *
+     * @param snap          état initial du plateau (sera modifié en place)
+     * @param currentPlayer index du joueur dont c'est le tour (0 ou 1)
+     * @param phase         phase de départ (PHASE_PLACEMENT ou PHASE_DEPLACEMENT)
+     * @param colorAI       couleur du joueur 0 (IA dans la simulation)
+     * @param colorOpp      couleur du joueur 1
+     * @return index du joueur gagnant (0 ou 1), ou -1 si nul / limite atteinte
+     */
+    private int simulateRandomGameSnap(int[] snap, int currentPlayer, int phase,
+                                       int colorAI, int colorOpp) {
+        // Limite de tours pour éviter les boucles infinies
+        final int MAX_TURNS = 80;
+
+        // Mémorise le dernier coup de chaque joueur pour éviter le ping-pong
+        // Format : "src->dest", null si pas encore joué
+        String[] lastMove = new String[2];
+
+        for (int turn = 0; turn < MAX_TURNS; turn++) {
+            int color    = (currentPlayer == 0) ? colorAI : colorOpp;
+            int oppColor = (currentPlayer == 0) ? colorOpp : colorAI;
+
+            // --- Vérification d'état terminal ---
+            if (isTerminalSnap(snap, colorAI, colorOpp, phase)) {
+                // Qui a perdu ?
+                int pawnsAI  = 0, pawnsOpp = 0;
+                for (int v : snap) {
+                    if (v == colorAI)  pawnsAI++;
+                    if (v == colorOpp) pawnsOpp++;
+                }
+                if (phase == MerelleStageModel.PHASE_DEPLACEMENT) {
+                    if (pawnsOpp < 3 || allMovesSnap(snap, colorOpp).isEmpty()) return 0; // colorAI (joueur 0) gagne
+                    if (pawnsAI  < 3 || allMovesSnap(snap, colorAI ).isEmpty()) return 1; // colorOpp (joueur 1) gagne
+                }
+                return -1; // nul (placement ou indéfini)
+            }
+
+            // --- Phase de placement ---
+            if (phase == MerelleStageModel.PHASE_PLACEMENT) {
+                List<Integer> placements = allPlacementsSnap(snap);
+                if (placements.isEmpty()) {
+                    // Plus de cases libres : passage en phase 2 (peut arriver en simulation)
+                    phase = MerelleStageModel.PHASE_DEPLACEMENT;
+                    continue;
+                }
+                int pos = placements.get(random.nextInt(placements.size()));
+                snap[pos] = color;
+
+                // Si moulin formé, capturer un pion adverse aléatoire (hors moulin si possible)
+                if (formsMillSnap(snap, pos, color)) {
+                    List<Integer> caps = allCapturesSnap(snap, oppColor);
+                    if (!caps.isEmpty()) {
+                        snap[caps.get(random.nextInt(caps.size()))] = -1;
+                    }
+                }
+
+                // Transition de phase si tous les pions sont posés
+                // (simplifié : on bascule après 18 coups de placement au total)
+                int placed = 0;
+                for (int v : snap) if (v != -1) placed++;
+                if (placed >= 18) phase = MerelleStageModel.PHASE_DEPLACEMENT;
+
+            } else {
+                // --- Phase de déplacement ---
+                List<int[]> moves = allMovesSnap(snap, color);
+                if (moves.isEmpty()) {
+                    // Ce joueur est bloqué → l'autre gagne
+                    return 1 - currentPlayer;
+                }
+
+                // Filtrer le coup ping-pong
+                String myLastMove = lastMove[currentPlayer];
+                List<int[]> filtered = new ArrayList<>();
+                for (int[] mv : moves) {
+                    if (!isPingPong(myLastMove, mv[0] + "->" + mv[1])) {
+                        filtered.add(mv);
+                    }
+                }
+                // S'il ne reste qu'un seul coup et qu'il est ping-pong, on l'autorise quand même
+                if (filtered.isEmpty()) filtered = moves;
+
+                int[] mv = filtered.get(random.nextInt(filtered.size()));
+                snap[mv[1]] = snap[mv[0]];
+                snap[mv[0]] = -1;
+                lastMove[currentPlayer] = mv[0] + "->" + mv[1];
+
+                // Si moulin formé, capturer un pion adverse aléatoire
+                if (formsMillSnap(snap, mv[1], color)) {
+                    List<Integer> caps = allCapturesSnap(snap, oppColor);
+                    if (!caps.isEmpty()) {
+                        snap[caps.get(random.nextInt(caps.size()))] = -1;
+                    }
+                }
+            }
+
+            currentPlayer = 1 - currentPlayer;
+        }
+
+        // Limite de tours atteinte : évaluer par heuristique
+        int score = evaluateSnap(snap, colorAI, colorOpp, phase);
+        if (score > 0) return 0;
+        if (score < 0) return 1;
+        return -1;
     }
 
     /**
      * Simule une partie complètement aléatoire depuis l'état actuel du plateau
      * jusqu'à ce qu'un état terminal soit atteint (victoire ou blocage).
      * À chaque tour, choisit un coup aléatoire parmi les coups valides.
+     * (Surcharge conservée pour compatibilité avec la signature d'origine.)
      *
-     * @param board        état actuel du plateau (copié avant la simulation)
+     * @param board        état actuel du plateau (non utilisé directement — préférer simulateRandomGameSnap)
      * @param currentPlayer index du joueur dont c'est le tour au début de la simulation
      * @param phase        phase actuelle au début de la simulation
      * @param colorJ1      couleur du joueur 0
@@ -378,8 +866,8 @@ public class MerelleDecider extends Decider {
      */
     private int simulateRandomGame(MerelleBoard board, int currentPlayer, int phase,
                                    int colorJ1, int colorJ2) {
-        // TODO
-        return -1;
+        int[] snap = boardSnapshot(board, colorJ1, colorJ2);
+        return simulateRandomGameSnap(snap, currentPlayer, phase, colorJ1, colorJ2);
     }
 
     // ================================================================
@@ -468,8 +956,11 @@ public class MerelleDecider extends Decider {
 
         // Fin de partie
         if (phase == MerelleStageModel.PHASE_DEPLACEMENT) {
-            if (pawnsOpp < 3) return 100000;
-            if (pawnsAI < 3) return -100000;
+            if (pawnsOpp < 3 || allMovesSnap(snap, colorOpp).isEmpty())
+                return 100000;
+
+            if (pawnsAI < 3 || allMovesSnap(snap, colorAI).isEmpty())
+                return -100000;
 
             if (allMovesSnap(snap, colorOpp).isEmpty()) return 100000;
             if (allMovesSnap(snap, colorAI).isEmpty()) return -100000;
@@ -618,6 +1109,51 @@ public class MerelleDecider extends Decider {
             boolean full = true;
             for (int p : mill) if (snap[p] != color) { full = false; break; }
             if (full) return true;
+        }
+        return false;
+    }
+
+    // ================================================================
+    // UTILITAIRE — ANTI-REFORMATION DE MOULIN
+    // ================================================================
+
+    /**
+     * Retourne true si déplacer le pion de src vers dest reformerait
+     * le dernier moulin mémorisé pour ce joueur dans stageModel.
+     * Travaille entièrement sur le snapshot (pas d'objet boardifier).
+     *
+     * Règle : l'IA peut reformer le même moulin, mais seulement après
+     * en avoir formé un autre entre-temps. Ici on pénalise simplement
+     * le coup si c'est exactement le dernier moulin mémorisé.
+     *
+     * @param snap      état du plateau avant le déplacement
+     * @param src       position source du pion
+     * @param dest      position destination du pion
+     * @param color     couleur du joueur
+     * @param playerId  index du joueur (0 ou 1)
+     * @param stageModel modèle courant (pour récupérer le dernier moulin mémorisé)
+     * @return true si le déplacement reformerait le même moulin qu'avant
+     */
+    private boolean wouldReformLastMillSnap(int[] snap, int src, int dest,
+                                            int color, int playerId,
+                                            MerelleStageModel stageModel) {
+        for (int[] mill : MerelleBoard.MILLS) {
+            // Le moulin doit contenir dest
+            boolean containsDest = false;
+            for (int p : mill) if (p == dest) { containsDest = true; break; }
+            if (!containsDest) continue;
+
+            // Vérifie si les 3 cases seraient toutes occupées par ce joueur après src→dest
+            boolean wouldForm = true;
+            for (int p : mill) {
+                if (p == dest) continue; // sera occupé
+                if (p == src)  { wouldForm = false; break; } // sera vide après
+                if (snap[p] != color) { wouldForm = false; break; }
+            }
+            if (!wouldForm) continue;
+
+            // Ce moulin se formerait : est-il le même que le dernier mémorisé ?
+            if (stageModel.isSameMillAsLast(playerId, mill)) return true;
         }
         return false;
     }

@@ -23,6 +23,8 @@ public class Merelle {
         int mode;
         int colorJ1;
         int colorJ2;
+        int aiDifficulty1 = MerelleDecider.DIFFICULTY_MINIMAX;
+        int aiDifficulty2 = MerelleDecider.DIFFICULTY_MINIMAX;
     }
 
     public static void main(String[] args) {
@@ -81,18 +83,20 @@ public class Merelle {
 
             // Tirage au sort du joueur qui commence
             int startingPlayer = rng.nextInt(2);
-            System.out.println();
-            System.out.println("Tirage au sort : c'est "
-                    + model.getPlayers().get(startingPlayer).getName()
-                    + " qui commence !");
-            model.setIdPlayer(startingPlayer);
-            System.out.println();
 
             GameException error = startGame(control);
             if (error != null) {
                 System.out.println("Impossible de demarrer le jeu : " + error.getMessage());
                 System.exit(1);
             }
+
+            model.setIdPlayer(startingPlayer);
+            System.out.println();
+            System.out.println("Tirage au sort : c'est "
+                    + model.getPlayers().get(startingPlayer).getName()
+                    + " qui commence !");
+            System.out.println();
+
             control.stageLoop();
 
             // Propose de rejouer (sauf IA vs IA ou EOF)
@@ -130,9 +134,19 @@ public class Merelle {
         }
 
         // Difficulte IA
-        if (cfg.mode == 1 || cfg.mode == 2) {
-            int difficulty = chooseDifficulty(br);
-            MerelleDecider.aiDifficulty = difficulty;
+        if (cfg.mode == 1) {
+            // Humain vs IA : une seule difficulte
+            cfg.aiDifficulty1 = chooseDifficulty(br, "l'IA");
+            cfg.aiDifficulty2 = cfg.aiDifficulty1;
+            MerelleDecider.aiDifficultyPerPlayer = null;
+            MerelleDecider.aiDifficulty = cfg.aiDifficulty1;
+        } else if (cfg.mode == 2) {
+            // IA vs IA : difficulte independante pour chaque IA
+            System.out.println("--- Configuration de l'IA 1 (Noir) ---");
+            cfg.aiDifficulty1 = chooseDifficulty(br, "l'IA 1");
+            System.out.println("--- Configuration de l'IA 2 (Rouge) ---");
+            cfg.aiDifficulty2 = chooseDifficulty(br, "l'IA 2");
+            MerelleDecider.aiDifficultyPerPlayer = new int[]{ cfg.aiDifficulty1, cfg.aiDifficulty2 };
         }
 
         // Couleurs
@@ -284,8 +298,8 @@ public class Merelle {
     /**
      * Affiche le menu de difficulte de l'IA.
      */
-    private static void printDifficultyMenu() {
-        System.out.println("Choisissez la difficulte de l'IA :");
+    private static void printDifficultyMenu(String label) {
+        System.out.println("Choisissez l'algorithme de " + label + " :");
         System.out.println("1 - MiniMax");
         System.out.println("2 - Alpha-Beta");
         System.out.println("3 - MCTS (Monte Carlo Tree Search)");
@@ -294,8 +308,8 @@ public class Merelle {
     /**
      * Demande a l'utilisateur de choisir la difficulte de l'IA.
      */
-    private static int chooseDifficulty(BufferedReader br) {
-        printDifficultyMenu();
+    private static int chooseDifficulty(BufferedReader br, String label) {
+        printDifficultyMenu(label);
         while (true) {
             System.out.print("> ");
             String line = readLine(br);
@@ -303,7 +317,7 @@ public class Merelle {
             int val = parseIntOrMinus1(line.trim());
             if (val >= 1 && val <= 3) {
                 String[] names = { "", "MiniMax", "Alpha-Beta", "Monte Carlo" };
-                System.out.println("Difficulte choisie : " + names[val]);
+                System.out.println("Algorithme choisi : " + names[val]);
                 return val;
             }
             System.out.println("Choix invalide (entrez 1, 2 ou 3).");

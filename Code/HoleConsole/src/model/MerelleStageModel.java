@@ -28,7 +28,7 @@ public class MerelleStageModel extends GameStageModel {
      * Taille de l'historique : on stocke 5 snapshots pour pouvoir comparer
      * 3 positions du MÊME joueur (indices 0, 2, 4 — espacés d'un tour chacun).
      */
-    private static final int DRAW_HISTORY_SIZE = 51;
+    private static final int DRAW_HISTORY_SIZE = 4;
 
     // --- Éléments du jeu ---
     private MerelleBoard board;
