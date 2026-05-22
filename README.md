@@ -33,3 +33,7 @@ Piece movement is also governed by specific rules:
 * A player cannot break and reform the same mill on two consecutive turns.
 
 The rules for forming mills and capturing pieces mentioned earlier also apply during this phase.       
+
+---
+
+## How to win ?
