@@ -4,7 +4,7 @@ Nine Men's Morris (Mill Game)
 The game of Nine Men's Morris, also known as the mill game, is a very ancient game, already played by the Egyptians and the Romans. It was in 14th-century France that the game became particularly popular. The game is played by two players and the objective is to reduce the opponents's number of pieces by two, or to block all of their possible moves.
 
 # Rules
-![Merelle Board](/Images/MerelleBoard.png)
+![Merelle Board](/Images/Merelle_Board.png)
 
 In its original form, the game is played on a board made up of three squares, themselves composed of nine points located at the corners and the midpoints of the squares’ sides. These squares are then connected to each other through their central points.
 
