@@ -8,62 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * Unit tests for MerelleStageFactory.
- *
- * ============================================================
- * WHAT IS TESTED HERE
- * ============================================================
- *
- * MerelleStageFactory exposes only ONE public method beyond its
- * constructor: setColors(int c1, int c2).
- *
- * The fields colorJ1 / colorJ2 are private static — there are no
- * public getters to read them back. Therefore the only observable
- * contract we can test WITHOUT modifying the source is:
- *
- *   "Does setColors(c1, c2) accept the call without throwing?"
- *
- * We test this exhaustively:
- *   1. Every valid pair (c1 ≠ c2, both in [0, NB_COLORS)) → no exception.
- *   2. Same color for both players → no exception
- *      (the factory silently corrects the conflict in setup(), not in setColors()).
- *
- * ============================================================
- * WHY WE DO NOT TEST PERSISTENCE VIA GETTERS
- * ============================================================
- *
- * getColorJ1() / getColorJ2() do not exist in MerelleStageFactory.
- * The fields are private static. Reading them back would require
- * either: (a) adding public getters, or (b) Java reflection.
- *
- * We do NOT use reflection because it couples tests to implementation
- * details, breaks with obfuscation, and is fragile. Instead we test
- * the public contract: "setColors() must not throw for valid input."
- *
- * The actual color correction logic (identical colors, invalid values)
- * only runs inside setup(), which is an integration concern tested
- * separately (requires a full boardifier Model + Stage).
- *
- * ============================================================
- * WHAT IS NOT TESTED HERE
- * ============================================================
- *
- * setup() calls boardifier internals (addElement, TextElement…) that
- * require a fully initialised Model and Stage. That is an integration
- * test — it belongs in a separate integration test class.
- *
- * ============================================================
- * ISOLATION STRATEGY
- * ============================================================
- *
- * MerelleStageFactory.colorJ1 / colorJ2 are static fields.
- * setUp() and tearDown() reset them to known defaults via setColors()
- * so each test starts from a clean, predictable state.
- *
- * No Mockito needed: the testable surface of MerelleStageFactory
- * is pure Java (a static method call — no dependency injection).
- */
+
 @DisplayName("MerelleStageFactory")
 class MerelleStageFactoryTest {
 
