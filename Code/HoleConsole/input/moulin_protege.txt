@@ -1,9 +1,0 @@
-A1
-A7
-D1
-D7
-G1
-G7
-XD7
-XD1
-stop
