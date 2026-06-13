@@ -1,0 +1,109 @@
+
+.menu-root {
+    -fx-background-color: #020208;
+    -fx-padding: 0;
+}
+
+.title { -fx-fill: #8098d8; }
+.subtitle { -fx-fill: #5068a0; }
+.screen-title { -fx-fill: #9aaedc; }
+.prompt-text { -fx-fill: #6878a8; }
+
+/* Boutons sombres */
+.btn-play {
+    -fx-background-color: rgba(8, 40, 20, 0.90);
+    -fx-text-fill: #60c888;
+    -fx-border-color: #124828;
+}
+.btn-play:hover { -fx-background-color: rgba(12, 55, 28, 0.95); }
+.btn-play:pressed { -fx-background-color: rgba(4, 22, 12, 0.98); }
+
+.btn-rules {
+    -fx-background-color: rgba(6, 22, 55, 0.90);
+    -fx-text-fill: #6098d8;
+    -fx-border-color: #0c2860;
+}
+.btn-rules:hover { -fx-background-color: rgba(10, 32, 78, 0.95); }
+.btn-rules:pressed { -fx-background-color: rgba(3, 11, 35, 0.98); }
+
+.btn-quit {
+    -fx-background-color: rgba(50, 8, 8, 0.90);
+    -fx-text-fill: #c07070;
+    -fx-border-color: #500808;
+}
+.btn-quit:hover { -fx-background-color: rgba(68, 11, 11, 0.95); }
+.btn-quit:pressed { -fx-background-color: rgba(28, 4, 4, 0.98); }
+
+.btn-primary {
+    -fx-background-color: rgba(10, 14, 50, 0.90);
+    -fx-text-fill: #8098d8;
+    -fx-border-color: #182060;
+}
+.btn-primary:hover { -fx-background-color: rgba(14, 20, 68, 0.95); }
+.btn-primary:pressed { -fx-background-color: rgba(5, 8, 30, 0.98); }
+
+.btn-secondary {
+    -fx-background-color: rgba(14, 18, 65, 0.90);
+    -fx-text-fill: #a0b4e8;
+    -fx-border-color: #202878;
+}
+.btn-secondary:hover { -fx-background-color: rgba(20, 26, 90, 0.95); }
+.btn-secondary:pressed { -fx-background-color: rgba(7, 9, 38, 0.98); }
+
+.btn-back {
+    -fx-text-fill: #404878;
+    -fx-border-color: #202448;
+}
+.btn-back:hover { -fx-background-color: rgba(20, 25, 70, 0.25); }
+.btn-back:pressed { -fx-background-color: rgba(20, 25, 70, 0.45); }
+
+.btn-pause {
+    -fx-background-color: rgba(10, 12, 40, 0.90);
+    -fx-text-fill: #8098d8;
+    -fx-border-color: #202060;
+}
+.btn-pause:hover { -fx-background-color: rgba(15, 18, 58, 0.95); }
+.btn-pause:pressed { -fx-background-color: rgba(5, 6, 22, 0.98); }
+
+/* Panels */
+.info-panel, .reserve-panel {
+    -fx-background-color: rgba(3,3,14,0.95);
+    -fx-border-color: #1c2040;
+}
+.info-header { -fx-fill: #8098d8; }
+.info-line { -fx-fill: #5878a8; }
+.info-message { -fx-fill: #6080c8; }
+
+/* Rules */
+.rules-scroll .viewport { -fx-background-color: rgba(2,2,12,0.98); }
+.rules-scroll { -fx-border-color: #1c2040; }
+.rules-heading { -fx-fill: #8098d8; }
+.rules-body { -fx-fill: #505880; }
+
+/* RadioButton */
+.radio-option {
+    -fx-text-fill: #8098d8;
+}
+.radio-option .radio {
+    -fx-border-color: #3040a0;
+    -fx-background-color: rgba(8,10,30,0.8);
+}
+.radio-option:selected .radio {
+    -fx-background-color: #3040a0;
+}
+.radio-option .dot {
+    -fx-background-color: #8098ff;
+}
+
+/* MenuBar */
+.top-menubar {
+    -fx-background-color: #010108;
+    -fx-border-color: #0e1030;
+}
+.top-menubar .menu { -fx-text-fill: #8098ff; -fx-font-weight: bold; }
+.top-menubar .menu:showing   { -fx-background-color: rgba(40,55,160,0.5); }
+.top-menubar .menu:hover { -fx-background-color: rgba(40,55,160,0.35); }
+.top-menubar .menu-item { -fx-background-color: #02020c; -fx-text-fill: #9aaedc; }
+.top-menubar .menu-item:focused { -fx-background-color: #0c1030; -fx-text-fill: #c0d0ff; }
+.top-menubar .menu-item:hover { -fx-background-color: #0c1030; -fx-text-fill: #c0d0ff; }
+.top-menubar .context-menu { -fx-background-color: #02020c; -fx-border-color: #1a2050; -fx-effect: none; }
